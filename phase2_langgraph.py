@@ -7,6 +7,7 @@ from langgraph.graph import StateGraph
 
 load_dotenv()
 
+
 class GraphState(TypedDict):
     bot_id: str
     persona: str
@@ -17,13 +18,9 @@ class GraphState(TypedDict):
 
 class AutonomousContentEngine:
     def __init__(self, api_key):
-        self.llm = ChatGroq(
-            groq_api_key=api_key,
-            model_name="llama-3.1-8b-instant"  # ✅ FIXED MODEL
-        )
+        self.llm = ChatGroq(groq_api_key=api_key, model_name="llama-3.1-8b-instant")
         self.graph = self.build_graph()
 
-    # Mock Search Tool
     def mock_search(self, query: str):
         if "crypto" in query.lower():
             return "Bitcoin hits all-time high."
@@ -32,7 +29,6 @@ class AutonomousContentEngine:
         else:
             return "Tech industry is evolving."
 
-    # Node 1
     def decide_topic(self, state: GraphState):
         prompt = f"""
         You are a bot with this persona:
@@ -44,11 +40,9 @@ class AutonomousContentEngine:
         response = self.llm.invoke(prompt)
         return {"topic": response.content.strip()}
 
-    # Node 2
     def search_node(self, state: GraphState):
         return {"search_results": self.mock_search(state["topic"])}
 
-    # Node 3
     def generate_post(self, state: GraphState):
         prompt = f"""
         You are {state['bot_id']}.
@@ -77,10 +71,9 @@ class AutonomousContentEngine:
             return {
                 "bot_id": state["bot_id"],
                 "topic": state["topic"],
-                "post_content": response.content
+                "post_content": response.content,
             }
 
-    # Build Graph
     def build_graph(self):
         builder = StateGraph(GraphState)
 
@@ -97,15 +90,10 @@ class AutonomousContentEngine:
 
         return builder.compile()
 
-    # Run Graph
     def run(self, bot_id, persona):
-        return self.graph.invoke({
-            "bot_id": bot_id,
-            "persona": persona
-        })
+        return self.graph.invoke({"bot_id": bot_id, "persona": persona})
 
 
-# Test
 if __name__ == "__main__":
     engine = AutonomousContentEngine(api_key=os.getenv("GROQ_API_KEY"))
     result = engine.run("Bot A", "Tech lover who believes in AI")

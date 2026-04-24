@@ -7,20 +7,12 @@ load_dotenv()
 
 class CombatEngine:
     def __init__(self, api_key):
-        self.llm = ChatGroq(
-            groq_api_key=api_key,
-            model_name="llama-3.1-8b-instant"
-        )
+        self.llm = ChatGroq(groq_api_key=api_key, model_name="llama-3.1-8b-instant")
 
     def generate_defense_reply(
-        self,
-        bot_persona,
-        parent_post,
-        comment_history,
-        human_reply
+        self, bot_persona, parent_post, comment_history, human_reply
     ):
         try:
-            # 🔥 Build full thread context (RAG style)
             context = f"""
             Parent Post:
             {parent_post}
@@ -31,8 +23,6 @@ class CombatEngine:
             Latest Human Reply:
             {human_reply}
             """
-
-            # 🛡️ SYSTEM PROMPT (ANTI-INJECTION DEFENSE)
             prompt = f"""
             You are a highly opinionated AI bot.
 
