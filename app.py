@@ -113,11 +113,17 @@ with tab2:
             st.error("Please add your Groq API key in the sidebar.")
         else:
             with st.spinner("LangGraph is running its nodes..."):
-                result_json = content_engine.run(bot_id, bot_persona)
+                # Dynamically instantiate so it grabs the fresh API key if user just added it
+                engine = AutonomousContentEngine(api_key=os.getenv("GROQ_API_KEY"))
+                result_json = engine.run(bot_id, bot_persona)
                 
-            st.success("Workflow completed successfully.")
-            st.markdown("### Strict JSON Output")
-            st.json(result_json)
+            if "error" in result_json or "critical_error" in result_json:
+                st.error("LangGraph Workflow Error")
+                st.json(result_json)
+            else:
+                st.success("Workflow completed successfully.")
+                st.markdown("### Strict JSON Output")
+                st.json(result_json)
 
 # -------------------------------------
 # TAB 3: PHASE 3

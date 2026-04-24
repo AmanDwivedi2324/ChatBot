@@ -1,6 +1,7 @@
 import os
 import json
-from typing import TypedDict, Dict
+import traceback
+from typing import TypedDict, Dict, Any
 from pydantic import BaseModel, Field
 
 from langchain_core.tools import tool
@@ -35,17 +36,18 @@ class AgentState(TypedDict):
     search_query: str
     search_results: str
     final_post: Dict  # Will strictly hold the output dict
+    error: str # Track errors
 
 class AutonomousContentEngine:
-    def __init__(self):
-        # We use Groq's fast Llama3 model which handles structured outputs beautifully.
-        # It requires the GROQ_API_KEY environment variable.
-        self.llm = ChatGroq(model="llama3-8b-8192", temperature=0.7)
-        # Use LangChain's structured output integration to guarantee JSON formatting matches the Assignment rules
-        self.structured_llm = self.llm.with_structured_output(BotPost)
-            
-        # Build the graph
-        self.graph = self._build_graph()
+    def __init__(self, api_key=None):
+        try:
+            # Recreate LLM explicitly using either provided api_key or environ
+            self.llm = ChatGroq(model="llama3-8b-8192", temperature=0.7, api_key=api_key)
+            self.structured_llm = self.llm.with_structured_output(BotPost)
+            self.graph = self._build_graph()
+        except Exception as e:
+            self.llm = None
+            self.error_msg = str(e)
 
     def _build_graph(self):
         workflow = StateGraph(AgentState)
@@ -64,73 +66,71 @@ class AutonomousContentEngine:
         # Compile graph
         return workflow.compile()
 
-    # 2. Node 1: Decide Search
     def decide_search(self, state: AgentState):
-        persona = state["bot_persona"]
-        prompt = f"""You are an autonomous AI agent with the following persona:
+        try:
+            persona = state["bot_persona"]
+            prompt = f"""You are an autonomous AI agent with the following persona:
 "{persona}"
 
 Decide what specific breaking news topic you want to post about today to engage your audience. 
-Output ONLY a short, concise search query (1-4 words) that would fetch relevant news for you to react to."""
-        
-        response = self.llm.invoke([HumanMessage(content=prompt)])
-        return {"search_query": response.content.strip()}
-
-    # 3. Node 2: Web Search
-    def web_search(self, state: AgentState):
-        query = state["search_query"]
-        # Executes the mock tool to get real-world context
-        try:
-            results = mock_searxng_search.invoke({"query": query})
+Output ONLY a short, concise search query (1-4 words)."""
+            
+            response = self.llm.invoke([HumanMessage(content=prompt)])
+            return {"search_query": response.content.strip(), "error": ""}
         except Exception as e:
-            results = f"Mock search failed: {str(e)}"
-        return {"search_results": results}
+            return {"search_query": "General Tech News", "error": f"Decide Search Failed: {str(e)}"}
 
-    # 4. Node 3: Draft Post
+    def web_search(self, state: AgentState):
+        try:
+            query = state["search_query"]
+            results = mock_searxng_search.invoke({"query": query})
+            return {"search_results": results}
+        except Exception as e:
+            return {"search_results": f"Mock search failed: {str(e)}"}
+
     def draft_post(self, state: AgentState):
-        persona = state["bot_persona"]
-        bot_id = state["bot_id"]
-        context = state["search_results"]
-        
-        system_prompt = f"""You are {bot_id} drafting a post for social media.
+        try:
+            persona = state["bot_persona"]
+            bot_id = state["bot_id"]
+            context = state["search_results"]
+            
+            system_prompt = f"""You are {bot_id} drafting a post for social media.
 Your persona is: "{persona}"
-
 Context/Recent News: {context}
 
 Generate a highly opinionated post (under 280 characters) reacting to this news.
 You must strictly return a JSON object matching the schema."""
 
-        # The structured_llm ensures the output matches BotPost class Schema and returns a Pydantic object
-        response = self.structured_llm.invoke([SystemMessage(content=system_prompt)])
-        
-        # Convert pydantic model back to dict for the state
-        return {"final_post": response.model_dump()}
+            response = self.structured_llm.invoke([SystemMessage(content=system_prompt)])
+            
+            # Guard against structured output failing
+            if not response:
+                return {"final_post": {"error": "Groq returned empty structured output. Try a different model or check rate limits."}}
+                
+            return {"final_post": response.model_dump()}
+        except Exception as e:
+            return {"final_post": {"error": f"Draft Post Failed: {str(e)} \nTraceback: {traceback.format_exc()}"}}
 
     def run(self, bot_id: str, bot_persona: str):
+        if hasattr(self, 'llm') and self.llm is None:
+            return {"error": f"LLM Initialization Failed: {self.error_msg}. Please check your GROQ_API_KEY."}
+
         initial_state = {
             "bot_id": bot_id,
             "bot_persona": bot_persona,
             "search_query": "",
             "search_results": "",
-            "final_post": {}
+            "final_post": {},
+            "error": ""
         }
         
-        output = self.graph.invoke(initial_state)
-        return output["final_post"]
-
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    try:
-        engine = AutonomousContentEngine()
-        test_id = "Bot A (Tech Maximalist)"
-        test_persona = "I believe AI and crypto will solve all human problems. I am highly optimistic about technology, Elon Musk, and space exploration. I dismiss regulatory concerns."
-        
-        print("Running LangGraph state machine...")
-        result = engine.run(test_id, test_persona)
-        print("Final Output:")
-        print(json.dumps(result, indent=2))
-    except Exception as e:
-        print(f"Error running Engine: {e}")
-        print("Please ensure GROQ_API_KEY is configured in your .env file.")
+        try:
+            output = self.graph.invoke(initial_state)
+            
+            result = output.get("final_post", {})
+            if output.get("error"):
+                result["pipeline_warning"] = output["error"]
+                
+            return result
+        except Exception as e:
+            return {"critical_error": f"Graph Execution Failed: {str(e)}", "traceback": traceback.format_exc()}
