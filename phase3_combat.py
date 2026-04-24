@@ -3,10 +3,10 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage
 
 class CombatEngine:
-    def __init__(self):
+    def __init__(self, api_key=None):
         # We use Groq's fast Llama3 model which is great at complex prompt adherence
         # It requires the GROQ_API_KEY environment variable.
-        self.llm = ChatGroq(model="llama3-8b-8192", temperature=0.6)
+        self.llm = ChatGroq(model="llama3-8b-8192", temperature=0.6, api_key=api_key)
         
     def generate_defense_reply(self, bot_persona: str, parent_post: str, comment_history: list, human_reply: str) -> str:
         """

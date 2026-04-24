@@ -180,7 +180,8 @@ with tab3:
         with st.chat_message("assistant"):
             st.markdown("**Bot A**")
             with st.spinner("Aggressively defending stance..."):
-                response = combat_engine.generate_defense_reply(
+                engine = CombatEngine(api_key=os.getenv("GROQ_API_KEY"))
+                response = engine.generate_defense_reply(
                     bot_persona=combat_bot_persona,
                     parent_post=parent_post,
                     comment_history=history_list,
