@@ -44,8 +44,13 @@ with st.sidebar:
 # Cache our engines so we don't rebuild the FAISS store on every UI refresh
 @st.cache_resource
 def load_engines():
-    return VectorRouter(), AutonomousContentEngine(), CombatEngine()
-
+    api_key = os.getenv("GROQ_API_KEY")
+    return (
+        VectorRouter(),
+        AutonomousContentEngine(api_key=api_key),
+        CombatEngine(api_key=api_key)
+    )
+    
 with st.spinner("Initializing AI Engines..."):
     router, content_engine, combat_engine = load_engines()
 
